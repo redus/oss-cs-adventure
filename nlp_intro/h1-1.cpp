@@ -4,13 +4,16 @@
 #include <unordered_map>
 
 
+const std::string TAGS[] = {"O", "I-GENE",};
+const int TAGS_SIZE = 2;
+const std::string RARE = "_RARE_";
 /***
  *	ADT: word counts
  *	populate word-tag count and tag seq count, and
  *  give e(word|TAG) using maximum likelihood probability
  **/
 
-class word_count{
+class unigram_count{
 	// words: count of tag associated with words
 	//		input: <tag>|<word>
 	//		output: count of word corresponding to tag
@@ -21,7 +24,7 @@ class word_count{
 
 public:
 	// ctor
-	word_count(std::string filename){
+	unigram_count(std::string filename){
 		read_file(filename);
 	}
 
@@ -66,19 +69,54 @@ public:
 		return (double) words[key] / gram[y];
 	}
 
-};
+	
 
+	std::string best_y(const std::string x){
+		std::string result = "";
+		double max_e = 0;
+		for (int i = 0; i < TAGS_SIZE; ++i){
+			std::string key = TAGS[i] + '|' + x;
+			if (words.count(key) > 0){
+				if (max_e < e(x, TAGS[i])){
+					max_e = e(x, TAGS[i]);
+					result = TAGS[i];
+				}
+			}
+		}
+		if (result == ""){
+			return best_y(RARE);
+		} else {
+			return result;
+		}
+	}
+};
 
 
 int main(int argc, char** argv){
 	if (argc < 3){
-		std::cout << "USAGE: word_count word TAG" << std::endl;
+		std::cout << "USAGE: unigram_count word TAG" << std::endl;
 		exit(1);
 	}
 
 	std::string x = argv[1];
 	std::string y = argv[2];
-	word_count wc("gene.counts");
+	unigram_count wc("gene.rare.counts");
 	std::cout << "e(" << x << ", " << y << ") = " << wc.e(x, y) << std::endl;
+	std::cout << "best y: " << wc.best_y(x) << std::endl;
+
+	std::ifstream fin;
+	std::ofstream fout;
+	std::string line;
+	fin.open("gene.dev");
+	fout.open("gene_dev.p1.out");
+	while(std::getline(fin, line)){
+		if (line == ""){
+			fout << line << '\n';
+		} else {
+			fout << line << ' ' << wc.best_y(line) << '\n';
+		}
+	}
+	fin.close();
+	fout.close();
 	return 0;
 }
