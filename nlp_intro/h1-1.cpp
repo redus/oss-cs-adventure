@@ -3,10 +3,14 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <cctype>
 
 
 const std::string TAGS[] = {"O", "I-GENE",};
 const int TAGS_SIZE = 2;
+const std::string NUM = "_NUM_";
+const std::string ALL_CAPS = "_ALL_CAPS_";
+const std::string LAST_CAPS = "_LAST_CAPS_";
 const std::string RARE = "_RARE_";
 
 /***
@@ -81,20 +85,37 @@ public:
 		return result;
 	}
 
+	std::string rare_type(std::string x){
+		bool caps = true;
+		for (unsigned i = 0; i < x.size(); ++i){
+			if (isdigit(x[i])){
+				return NUM;
+			} else if (!isupper(x[i])){
+				caps = false;
+				break;
+			}
+		}
+
+		if (caps){
+			return ALL_CAPS;
+		} else if (isupper(x[x.size() - 1])){
+			return LAST_CAPS;
+		} else {
+			return RARE;
+		}
+	}
+
 	// REQ: x is the word, y is TAG
 	// EFF: e(x|y) = count(y -> x) / count(x)
 	double e(std::string x, std::string y){
 		std::string key = y + "|" + x;
-		std::string is_rare = "rare";
 		double result = 0;
 
 		if (count_words(x) > 0){
-			is_rare = "not_rare";
 			result = (double) words[key] / gram[y];
 		} else {
-			result = (double) words[y + "|" + RARE] / gram[y];
+			result = (double) words[y + "|" + rare_type(x)] / gram[y];
 		}
-		// std::cout << key << ' ' << is_rare  << ' ' << result << std::endl;
 		return result;
 	}
 
@@ -237,7 +258,7 @@ int main(int argc, char** argv){
 	std::ofstream fout;
 	std::string line;
 	fin.open("gene.dev");
-	fout.open("gene_dev.p2.out");
+	fout.open("gene_dev.p3.out");
 
 
 
