@@ -250,13 +250,18 @@ public:
 						std::string z = x_y_z.substr(delim_right + 1);
 						// std::cout << x_y_z << ": " << x << ' ' << y << ' ' << z << std::endl;
 
+						double p_binary = binary_ML(x, y, z);
+						if (p_binary <= 0){
+							continue;
+						}
+
 						double max = pi[i][j][x];
 						unsigned max_s_point = 0;
 						std::string max_y_z = "end";
 
 						for (unsigned s_point = i; s_point < j; ++s_point){
-							double current = binary_ML(x, y, z) * 
-								pi[i][s_point][y] * pi[s_point + 1][j][z];
+							double current = p_binary * pi[i][s_point][y] * 
+								pi[s_point + 1][j][z];
 
 							if (max < current){
 								max = current;
