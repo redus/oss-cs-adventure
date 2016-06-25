@@ -18,4 +18,13 @@ public:
 	    return elems;
 	}
 
+	static std::string join(const string_vec &tokens, char delim) {
+	    std::string result = tokens.size() > 0 ? tokens[0] : "";
+	    for (int i = 1; i < tokens.size(); ++i)
+	    {
+	    	result += delim + tokens[i];
+	    }
+	    return result;
+	}
+
 };

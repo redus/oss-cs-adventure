@@ -7,39 +7,63 @@
 #include "StringHelper.hpp"
 
 
-typedef std::unordered_map<std::string, double> str_double_map;
-typedef std::vector<std::string> string_vec;
-
 /***
  *	ADT: Global linear model
  *	
  *  perform Viterbi algorithm on given sentence
  **/
 class GLM{
-	std::unordered_map<std::string, int>  global_features;
-	str_double_map weight;
-
-	// feature identifiers
-	const std::string F_TAG = "_TAG_";
-	const std::string F_TRIGRAM = "_TRIGRAM_";
-	const std::string TAGS[2] = {"O", "I-GENE"};
-	const int TAGS_SIZE = 2;
-
-	const std::string START = "*";
-	const std::string STOP = "STOP";
-	const std::string DELIM = "+";
-
-	struct History{
-		std::string tag_2; // 2nd previous tag
-		std::string tag_1; // previous tag
-		const string_vec &words; // sentence  
-		unsigned index;
-	};
-
 public:
+	typedef std::vector<std::string> string_vec;
+	GLM(){}
+
 	// ctor
 	GLM(std::string weight_file){
 		read_weight(weight_file);
+	}
+
+	void update_weight(const string_vec &sentence, const string_vec &tags, 
+		const string_vec &gold_tags){
+
+		for (unsigned i = 0; i <= sentence.size(); ++i){
+			std::string t_tag2 = i < 2 ? START : tags[i-2];
+			std::string t_tag1 = i < 1 ? START : tags[i-1];
+			std::string t_tag = i < sentence.size() ? tags[i] : STOP;
+			History t_history{t_tag2, t_tag1, sentence, i};
+			// std::cout << '-' << std::endl; 
+			double sum = 0;
+			for (std::string key : gen_feature_keys(t_history, t_tag)){
+				sum += 1;
+			}
+			for (std::string key : gen_feature_keys(t_history, t_tag)){
+				weight[key] -= sum;
+				// std::cout << key << ' ' << weight[key] << std::endl; 
+			}
+
+			std::string g_tag2 = i < 2 ? START : gold_tags[i-2];
+			std::string g_tag1 = i < 1 ? START : gold_tags[i-1];
+			std::string g_tag = i < sentence.size() ? gold_tags[i] : STOP;
+			History g_history{g_tag2, g_tag1, sentence, i};
+			sum = 0;
+			for (std::string key : gen_feature_keys(g_history, g_tag)){
+				sum += 1;
+			}
+			for (std::string key : gen_feature_keys(g_history, g_tag)){
+				weight[key] += sum;
+				// std::cout << key << ' ' << weight[key] << std::endl; 
+			}
+		}
+	}
+
+	void print_weight(std::ostream &out){
+		// print with DELIM changed to space
+		for (auto i = weight.begin(); i != weight.end(); ++i)
+		{
+			StringHelper::string_vec tokens = StringHelper::split(i->first, DELIM);
+			tokens[0] = feature_to_string(tokens[0]);
+			std::string key = StringHelper::join(tokens, DELIM );
+			out << key << DELIM << i->second << std::endl; 
+		}
 	}
 
 	// EFF: perform viterbi to calculate global linear score on sentence, and
@@ -110,8 +134,10 @@ public:
 		string_vec result (sentence.size());
 		int position = max_key.find(DELIM);
 		result[result.size() - 1] = max_key.substr(position + 1);
-		result[result.size() - 2] = max_key.substr(0, position);
-
+		if (result.size() > 1){
+			result[result.size() - 2] = max_key.substr(0, position);
+		}
+		
 		for (int i = result.size() - 3; i >= 0; --i){
 			std::string key= result[i + 1] + DELIM + result[i + 2];
 			result[i] = bp[i + 3][key];
@@ -120,123 +146,167 @@ public:
 	}
 
 private:
+	std::unordered_map<std::string, int> global_features;
+	typedef std::unordered_map<std::string, double> str_double_map;
+	str_double_map weight;
+
+	// feature identifiers
+	const std::string F_TAG = "_TAG_";
+	const std::string F_TRIGRAM = "_TRIGRAM_";
+	const std::string F_SUFF = "_SUFF_";
+	const std::string F_PREF = "_PREF_";
+	const string_vec TAGS = {"O", "I-GENE"};
+
+	const std::string START = "*";
+	const std::string STOP = "STOP";
+	const char DELIM = '|';
+
+	struct History{
+		std::string tag_2; // 2nd previous tag
+		std::string tag_1; // previous tag
+		const string_vec &words; // sentence  
+		unsigned index;
+	};
+
 	// REQ: file is seperated by space
 	// EFF: populate weight from filename
 	void read_weight(std::string filename){
 		std::ifstream fin;
 		fin.open(filename);
 
-		double value;
-		std::string type;
-		while(fin >> type){
+		
+		std::string line;
+		while(std::getline(fin, line)){
+			StringHelper::string_vec tokens = StringHelper::split(line, DELIM);
 			std::string key = "";
+			std::string type = tokens[0];
 
 			if (type == "TAG"){
-				std::string word, tag;
-				fin >> word >> tag;
-				key = F_TAG + DELIM + tag + DELIM + word;
+				key = F_TAG + DELIM + tokens[1] + DELIM + tokens[2];
 			} else if (type == "TRIGRAM"){
-				std::string tag1, tag2, tag3;
-				fin >> tag1 >> tag2 >> tag3;
-				key = F_TRIGRAM + DELIM + tag1 + DELIM + tag2 + DELIM + tag3;
-			} else {
-				// dump line 
-				std::string line;
-				std::getline(fin, line);
+				key = F_TRIGRAM + DELIM + tokens[1] + DELIM + tokens[2] + DELIM + 
+					tokens[3];
+			} else if (type == "SUFF"){
+				key = F_SUFF + DELIM + tokens[1] + DELIM + tokens[2];
+			}else if (type == "PREF"){
+				key = F_PREF + DELIM + tokens[1] + DELIM + tokens[2];
 			}
 
-			fin >> value;
+			double value = std::stod(tokens[tokens.size() - 1]);
 			weight[key] = value;
 			// std::cout << key << ' ' << value << std::endl;
 		}
 		fin.close();
 	}
 
+	std::string feature_to_string(std::string feature){
+		if (feature == F_TAG){
+			return "TAG";
+		} else if (feature == F_TRIGRAM){
+			return "TRIGRAM";
+		} else if (feature == F_SUFF){
+			return "SUFF";
+		} else if (feature == F_PREF){
+			return "PREF";
+		} else {
+			return "";
+		}
+	}
 	// EFF: return vector of feature keys
-	string_vec gen_feature_keys(const History &history, std::string tag){
+	string_vec gen_feature_keys(const History &history, const std::string tag){
 		string_vec result;
-		// tag feature
+		
 		if (history.index < history.words.size()){
-			result.push_back(F_TAG + DELIM + tag + DELIM + history.words[history.index]);
+			std::string word = history.words[history.index];
+			// tag feature
+			result.push_back(F_TAG + DELIM + tag + DELIM + word);
+
+			// prefix, suffix feature
+			for (int i = 1; word.size() >= i && i <= 3; ++i){
+				std::string prefix = word.substr(0, i);
+				std::string suffix = word.substr(word.size() - i);
+				result.push_back(F_PREF + DELIM + tag + DELIM + prefix);
+				result.push_back(F_SUFF + DELIM + tag + DELIM + suffix);
+			}
 		} 
 		// trigram feature
 		result.push_back(F_TRIGRAM + DELIM + history.tag_2 + DELIM + history.tag_1
 				+ DELIM + tag);
+		
 		return result;
-
 	}
 
 
-	double local_inner_product(const History &history, std::string tag){
+	double local_inner_product(const History &history, const std::string tag){
 		double sum = 0;
 		// make feature key array
 		for (std::string key : gen_feature_keys(history, tag)){
+			
 			global_features[key] = 1;
 			sum += weight[key] * global_features[key];
+			// std::cout << key <<  ' ' << weight[key] << ' ' << std::endl;
 		}
 		
-		// std::cout << weight[w_key]  << ' ' << global_features[w_key] << std::endl;
+		
 		return sum;
 	}
 };
 
-
-class Perceptron
-{
-	str_double_map weights;
-	int max_suffix_length;
-public:
-
-	Perceptron() : max_suffix_length(3) {};
- 	Perceptron(int suffix) : max_suffix_length(suffix) {};
-	// REQ
-	void update(const string_vec &sentence, string_vec &tags, string_vec &gold_tags){
-		for (int i = 0; i != sentence.size(); ++i){
-			suffix_feature(sentence[i], tags[i], false);
-			suffix_feature(sentence[i], gold_tags[i], true);
-		}
-	}
-
-	// suffix feature
-
-	void suffix_feature(std::string word, std::string tag, bool is_gold_tag){
-		for (int i = 1; i <= max_suffix_length; ++i)
-		{
-			std::string suffix = word.substr(word.size() - i);
-			int value = is_gold_tag ? 1 : -1;
-			weights[suffix + ' ' + tag] += value; 
-		}
-	}
-	void print_weights(){
-		for (auto i = weights.begin(); i != weights.end(); ++i){
-			std::cout << "SUFFIX " << i->first << ' ' << i->second << std::endl; 
-		}
-	}
-	
-};
-
 int main(int argc, char** argv){
-	GLM glm("tag.model");
-	Perceptron perceptron;
 
+	if (argc < 2){
+		std::cerr << "usage: p4 [train|model] <model_file>" << std::endl;
+		exit(1);
+	}
+
+	GLM glm = (argv[1] == std::string("train")) ? GLM() : GLM(argv[2]);
 	std::ifstream fin;
 	std::ofstream fout;
+	
+	
 	std::string line;
-	fin.open("gene.train");
-	fout.open("gene.dev.p4.out");
+	GLM::string_vec sentence; 
+	if (argv[1] == std::string("train")){
+		int times = 6;
+		GLM::string_vec gold_tags;
+		fin.open("gene.train");
+		fout.open("suffix_tagger.model");
 
-
-	string_vec sentence, gold_tags;
-	while(std::getline(fin, line)){
-		if (line == ""){
-			string_vec tags = glm.viterbi(sentence);
-			for (unsigned i = 0; i < tags.size(); ++i){
-				fout << sentence[i] << ' ' << tags[i] << '\n';
+		for (int i = 0; i < times; ++i) {
+			while(std::getline(fin, line)){
+				if (line.empty()){
+					GLM::string_vec tags = glm.viterbi(sentence);
+					glm.update_weight(sentence, tags, gold_tags);
+					sentence.clear();
+					gold_tags.clear();
+				} else {
+					std::string word, tag;
+					std::istringstream iss(line);
+					iss >> word >> tag;
+					sentence.push_back(word);
+					gold_tags.push_back(tag);
+				}
 			}
-			fout << '\n';
-			sentence.clear();
-		} else {
-			sentence.push_back(line);
+			fin.clear();
+			fin.seekg(0);
+		}
+
+		glm.print_weight(fout);
+
+	} else {
+		fin.open("gene.dev");
+		fout.open("gene.dev.p4.out");
+		while(std::getline(fin, line)){
+			if (line.empty()){
+				GLM::string_vec tags = glm.viterbi(sentence);
+				for (int i = 0; i < sentence.size(); ++i){
+					fout << sentence[i] << ' ' << tags[i] << '\n';
+				}
+				fout << '\n';
+				sentence.clear();
+			} else {
+				sentence.push_back(line);
+			}
 		}
 	}
 
